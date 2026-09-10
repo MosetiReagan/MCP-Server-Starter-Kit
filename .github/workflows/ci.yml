@@ -11,6 +11,22 @@ jobs:
       matrix:
         node: [20, 22, 24]
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: mcp
+          POSTGRES_PASSWORD: mcp-test-password
+          POSTGRES_DB: mcp
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U mcp -d mcp"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      POSTGRES_TEST_URL: postgresql://mcp:mcp-test-password@localhost:5432/mcp
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
