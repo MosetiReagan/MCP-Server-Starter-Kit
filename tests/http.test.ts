@@ -212,4 +212,49 @@ describe("HTTP server", () => {
     expect(result.content).toEqual([{ type: "text", text: "42" }]);
     await client.close();
   });
+
+  it("supports concurrent Streamable HTTP clients", async () => {
+    const toolkit = createMcpServer({
+      name: "http-multi-session",
+      version: "0.1.0",
+    });
+    toolkit.tool(
+      "echo",
+      { inputSchema: { value: z.string() } },
+      async ({ value }) => ({ content: [{ type: "text", text: value }] }),
+    );
+    const server = createHttpServer({
+      config: { ...config, MCP_AUTH_ENABLED: false },
+      toolkit,
+      readiness: new ReadinessRegistry(),
+      logger: { info: () => undefined, error: () => undefined },
+    });
+    servers.push(server);
+    await server.start();
+    const address = server.server.address();
+    const port = typeof address === "object" && address ? address.port : 0;
+    const clients = await Promise.all(
+      ["first", "second"].map(async (value) => {
+        const client = new Client({
+          name: `${value}-client`,
+          version: "1.0.0",
+        });
+        const transport = new StreamableHTTPClientTransport(
+          new URL(`http://127.0.0.1:${String(port)}/mcp`),
+        );
+        await client.connect(transport);
+        return { client, value };
+      }),
+    );
+    const results = await Promise.all(
+      clients.map(({ client, value }) =>
+        client.callTool({ name: "echo", arguments: { value } }),
+      ),
+    );
+    expect(results.map((result) => result.content)).toEqual([
+      [{ type: "text", text: "first" }],
+      [{ type: "text", text: "second" }],
+    ]);
+    await Promise.all(clients.map(({ client }) => client.close()));
+  });
 });

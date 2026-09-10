@@ -241,6 +241,9 @@ MAX_SESSIONS_PER_IP=10
 `MAX_SESSIONS` protects overall process memory, while `MAX_SESSIONS_PER_IP`
 prevents one client address from opening excessive concurrent sessions. Tune
 these values for your deployment and reverse-proxy configuration.
+Each HTTP session receives an isolated SDK server instance with the same
+registered tools, resources, and prompts. The shared `Toolkit` broadcasts MCP
+logging notifications and subscribed resource updates to active sessions.
 
 ## CLI
 

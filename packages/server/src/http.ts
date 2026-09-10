@@ -178,7 +178,7 @@ export function createHttpServer(options: HttpServerOptions) {
           if (remainingSessions <= 0) sessionsPerIp.delete(clientIp);
           else sessionsPerIp.set(clientIp, remainingSessions);
         };
-        await toolkit.mcp.connect(transport);
+        await toolkit.connectTransport(transport);
         await transport.handleRequest(request.raw, reply.raw, request.body);
         return;
       }

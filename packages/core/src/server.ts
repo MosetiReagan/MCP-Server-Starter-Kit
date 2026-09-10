@@ -16,6 +16,7 @@ import {
   UnsubscribeRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import type { RequestHandlerExtra } from "@modelcontextprotocol/sdk/shared/protocol.js";
+import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import { z, type ZodRawShape } from "zod";
 
 export interface McpServerOptions {
@@ -51,10 +52,14 @@ export class Toolkit {
   readonly resourceNames = new Set<string>();
   readonly promptNames = new Set<string>();
   readonly loggers: Record<LoggingLevel, (data: unknown) => void>;
+  private readonly options: McpServerOptions;
+  private readonly registrations: ((toolkit: Toolkit) => void)[] = [];
+  private readonly sessionToolkits = new Set<Toolkit>();
   private readonly subscribableResources = new Set<string>();
   private readonly subscriptions = new Map<string, Set<string>>();
 
   constructor(options: McpServerOptions) {
+    this.options = options;
     this.mcp = new McpServer(
       { name: options.name, version: options.version },
       { capabilities: { logging: {}, resources: { subscribe: true } } },
@@ -95,6 +100,9 @@ export class Toolkit {
   ): void {
     if (this.toolNames.has(name))
       throw new Error(`Tool already registered: ${name}`);
+    this.registrations.push((toolkit) => {
+      toolkit.tool(name, definition, handler);
+    });
     this.toolNames.add(name);
     this.mcp.registerTool(
       name,
@@ -114,6 +122,9 @@ export class Toolkit {
     metadata: ResourceOptions,
     read: () => Promise<ReadResourceResult> | ReadResourceResult,
   ): void {
+    this.registrations.push((toolkit) => {
+      toolkit.resource(name, uri, metadata, read);
+    });
     this.resourceNames.add(name);
     if (metadata.subscribable) this.subscribableResources.add(uri);
     this.mcp.registerResource(name, uri, metadata, read);
@@ -127,6 +138,9 @@ export class Toolkit {
       variables: Record<string, string | string[]>,
     ) => Promise<ReadResourceResult> | ReadResourceResult,
   ): void {
+    this.registrations.push((toolkit) => {
+      toolkit.resourceTemplate(name, template, metadata, read);
+    });
     this.resourceNames.add(name);
     this.mcp.registerResource(
       name,
@@ -142,6 +156,9 @@ export class Toolkit {
     argsSchema: Args,
     handler: (args: zInfer<Args>) => Promise<GetPromptResult> | GetPromptResult,
   ): void {
+    this.registrations.push((toolkit) => {
+      toolkit.prompt(name, description, argsSchema, handler);
+    });
     this.promptNames.add(name);
     this.mcp.registerPrompt(
       name,
@@ -152,8 +169,31 @@ export class Toolkit {
 
   notifyResourceChanged(uri: string): void {
     if (!this.subscribableResources.has(uri)) return;
-    if ((this.subscriptions.get(uri)?.size ?? 0) === 0) return;
-    void this.mcp.server.sendResourceUpdated({ uri }).catch(() => undefined);
+    if ((this.subscriptions.get(uri)?.size ?? 0) > 0) {
+      void this.mcp.server.sendResourceUpdated({ uri }).catch(() => undefined);
+    }
+    for (const session of this.sessionToolkits) {
+      session.notifyResourceChanged(uri);
+    }
+  }
+
+  async connectTransport(transport: Transport): Promise<Toolkit> {
+    const session = new Toolkit(this.options);
+    for (const register of this.registrations) register(session);
+    this.sessionToolkits.add(session);
+    const previousOnClose = transport.onclose;
+    transport.onclose = () => {
+      previousOnClose?.();
+      this.sessionToolkits.delete(session);
+    };
+    try {
+      await session.mcp.connect(transport);
+    } catch (error) {
+      this.sessionToolkits.delete(session);
+      transport.onclose = previousOnClose;
+      throw error;
+    }
+    return session;
   }
 
   private registerSubscriptionHandlers(): void {
@@ -184,6 +224,9 @@ export class Toolkit {
     void this.mcp
       .sendLoggingMessage({ level, data: data ?? null })
       .catch(() => undefined);
+    for (const session of this.sessionToolkits) {
+      session.log(level, data);
+    }
   }
 }
 
