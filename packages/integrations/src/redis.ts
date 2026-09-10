@@ -29,6 +29,7 @@ export function registerRedisTools(
     {
       description: "Get a namespaced cache value",
       inputSchema: { key: z.string().min(1).max(200) },
+      annotations: { readOnlyHint: true, idempotentHint: true },
     },
     async ({ key: name }) => {
       const value = await config.client.get(key(name));
@@ -46,6 +47,7 @@ export function registerRedisTools(
         value: z.string().max(1_000_000),
         ttlSeconds: z.number().int().min(1).max(86_400),
       },
+      annotations: { destructiveHint: true, idempotentHint: true },
     },
     async ({ key: name, value, ttlSeconds }) => {
       await config.client.set(key(name), value, "EX", ttlSeconds);
@@ -61,6 +63,7 @@ export function registerRedisTools(
     {
       description: "Delete a namespaced cache value",
       inputSchema: { key: z.string().min(1).max(200) },
+      annotations: { destructiveHint: true, idempotentHint: true },
     },
     async ({ key: name }) => {
       const deleted = await config.client.del(key(name));
@@ -76,6 +79,7 @@ export function registerRedisTools(
     {
       description: "List keys in the configured namespace",
       inputSchema: { limit: z.number().int().min(1).max(100).default(20) },
+      annotations: { readOnlyHint: true, idempotentHint: true },
     },
     async ({ limit }) => {
       const prefixLength = `${config.prefix}:`.length;

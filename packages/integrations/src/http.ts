@@ -89,6 +89,14 @@ export function createHttpIntegration(options: HttpIntegrationOptions) {
           operation.name,
           {
             description: operation.description,
+            annotations: {
+              readOnlyHint: operation.method === "GET",
+              destructiveHint: operation.method !== "GET",
+              idempotentHint:
+                operation.method === "GET" ||
+                operation.method === "PUT" ||
+                operation.method === "DELETE",
+            },
             inputSchema: operation.inputSchema ?? {
               ...(operation.allowPathOverride
                 ? { path: z.string().optional() }

@@ -6,6 +6,7 @@ import type {
   ReadResourceResult,
   GetPromptResult,
   CallToolResult,
+  ToolAnnotations,
 } from "@modelcontextprotocol/sdk/types.js";
 import { z, type ZodRawShape } from "zod";
 
@@ -17,6 +18,7 @@ export interface McpServerOptions {
 export interface ToolDefinition<Args extends ZodRawShape> {
   description?: string;
   inputSchema?: Args;
+  annotations?: ToolAnnotations;
 }
 
 type ToolHandler<Args extends ZodRawShape> = (
@@ -48,6 +50,7 @@ export class Toolkit {
       {
         description: definition.description,
         inputSchema: definition.inputSchema,
+        annotations: definition.annotations,
       },
       handler as never,
     );

@@ -27,7 +27,10 @@ export function registerPostgresTools(
 
     toolkit.tool(
       `list_${table.name}`,
-      { description: `List rows from ${table.name}` },
+      {
+        description: `List rows from ${table.name}`,
+        annotations: { readOnlyHint: true, idempotentHint: true },
+      },
       async () => {
         const result = await options.pool.query(
           `SELECT ${columns} FROM ${qualified} ORDER BY ${primary} LIMIT 100`,
@@ -41,6 +44,7 @@ export function registerPostgresTools(
       {
         description: `Get one ${table.name} row by primary key`,
         inputSchema: { id: z.string() },
+        annotations: { readOnlyHint: true, idempotentHint: true },
       },
       async ({ id }) => {
         const result = await options.pool.query(
@@ -66,6 +70,7 @@ export function registerPostgresTools(
             query: z.string().min(1).max(100),
             limit: z.number().int().min(1).max(100).default(20),
           },
+          annotations: { readOnlyHint: true, idempotentHint: true },
         },
         async ({ query, limit }) => {
           const parameters = searchColumns.map(() => `%${query}%`);

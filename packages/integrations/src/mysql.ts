@@ -25,7 +25,10 @@ export function registerMysqlTools(
     const primary = `\`${assertIdentifier(table.primaryKey)}\``;
     toolkit.tool(
       `list_${table.name}`,
-      { description: `List rows from ${table.name}` },
+      {
+        description: `List rows from ${table.name}`,
+        annotations: { readOnlyHint: true, idempotentHint: true },
+      },
       async () => {
         const [rows] = await options.pool.query(
           `SELECT ${columns} FROM \`${table.name}\` ORDER BY ${primary} LIMIT 100`,
@@ -38,6 +41,7 @@ export function registerMysqlTools(
       {
         description: `Get one ${table.name} row by primary key`,
         inputSchema: { id: z.string() },
+        annotations: { readOnlyHint: true, idempotentHint: true },
       },
       async ({ id }) => {
         const [rows] = await options.pool.query(
@@ -60,6 +64,7 @@ export function registerMysqlTools(
             query: z.string().min(1).max(100),
             limit: z.number().int().min(1).max(100).default(20),
           },
+          annotations: { readOnlyHint: true, idempotentHint: true },
         },
         async ({ query, limit }) => {
           const [rows] = await options.pool.query(
