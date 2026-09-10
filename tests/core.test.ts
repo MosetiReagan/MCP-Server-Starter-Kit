@@ -119,6 +119,35 @@ describe("MCP core", () => {
     await client.close();
   });
 
+  it("returns structured tool output", async () => {
+    const toolkit = createMcpServer({
+      name: "structured-server",
+      version: "1.0.0",
+    });
+    toolkit.tool(
+      "status",
+      {
+        description: "Get status",
+        inputSchema: {},
+        outputSchema: { result: z.string() },
+      },
+      async () => ({
+        content: [{ type: "text", text: "ok" }],
+        structuredContent: { result: "ok" },
+      }),
+    );
+    const [clientTransport, serverTransport] =
+      InMemoryTransport.createLinkedPair();
+    const client = new Client({ name: "structured-client", version: "1.0.0" });
+    await Promise.all([
+      client.connect(clientTransport),
+      toolkit.mcp.connect(serverTransport),
+    ]);
+    const result = await client.callTool({ name: "status", arguments: {} });
+    expect(result.structuredContent).toEqual({ result: "ok" });
+    await client.close();
+  });
+
   it("supports opt-in resource subscriptions", async () => {
     const uri = "docs://getting-started";
     const toolkit = createMcpServer({

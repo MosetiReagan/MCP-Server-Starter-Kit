@@ -26,6 +26,7 @@ export interface McpServerOptions {
 export interface ToolDefinition<Args extends ZodRawShape> {
   description?: string;
   inputSchema?: Args;
+  outputSchema?: ZodRawShape;
   annotations?: ToolAnnotations;
 }
 
@@ -100,6 +101,7 @@ export class Toolkit {
       {
         description: definition.description,
         inputSchema: definition.inputSchema,
+        outputSchema: definition.outputSchema,
         annotations: definition.annotations,
       },
       handler as never,
