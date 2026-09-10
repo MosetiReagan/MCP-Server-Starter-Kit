@@ -203,6 +203,11 @@ api.mapToTools(server, [
 ]);
 ```
 
+Path overrides are disabled by default. An MCP client cannot redirect an
+operation to another endpoint on the upstream host. Set
+`allowPathOverride: true` only when clients must select among explicitly
+intended paths; overrides remain restricted to the configured `baseUrl`.
+
 Upstream credentials remain server-side and are never returned to the MCP client.
 
 ## Authentication

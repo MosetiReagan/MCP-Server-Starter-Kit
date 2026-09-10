@@ -184,6 +184,40 @@ describe("integrations", () => {
     await app.close();
   });
 
+  it("ignores REST path overrides unless explicitly enabled", async () => {
+    const app = Fastify();
+    app.get("/users", async () => ({ users: [{ id: 1 }] }));
+    app.get("/admin", async () => ({ secret: true }));
+    await app.listen({ host: "127.0.0.1", port: 0 });
+    const address = app.server.address();
+    const port = typeof address === "object" && address ? address.port : 0;
+    const api = createHttpIntegration({
+      baseUrl: `http://127.0.0.1:${String(port)}`,
+    });
+    const toolkit = createMcpServer({ name: "api-path", version: "0.1.0" });
+    api.mapToTools(toolkit, [
+      {
+        name: "list_users",
+        description: "List users",
+        method: "GET",
+        path: "/users",
+        responseSchema: z.object({
+          users: z.array(z.object({ id: z.number() })),
+        }),
+      },
+    ]);
+    const client = await connect(toolkit);
+    const result = await client.callTool({
+      name: "list_users",
+      arguments: { path: "/admin" },
+    });
+    expect(result.content).toEqual([
+      { type: "text", text: JSON.stringify({ users: [{ id: 1 }] }) },
+    ]);
+    await client.close();
+    await app.close();
+  });
+
   it("redacts sensitive values in logs", () => {
     expect(
       redact({ authorization: "secret", nested: { apiKey: "secret" } }),
