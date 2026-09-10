@@ -8,7 +8,8 @@ export function parseInspectArguments(args: readonly string[]): {
   let url: string | undefined;
   let apiKey: string | undefined;
   for (let index = 0; index < args.length; index += 1) {
-    const arg = args[index];
+    const arg = args.at(index);
+    if (!arg) break;
     if (arg === "--api-key") {
       const value = args.at(index + 1);
       if (!value) throw new Error("--api-key requires a value");
