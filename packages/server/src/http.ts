@@ -45,6 +45,22 @@ function sendJsonRpcError(
     });
 }
 
+function sendRawJsonRpcError(
+  reply: FastifyReply,
+  httpStatus: number,
+  code: number,
+  message: string,
+) {
+  reply.raw.writeHead(httpStatus, { "content-type": "application/json" });
+  reply.raw.end(
+    JSON.stringify({
+      jsonrpc: "2.0",
+      error: { code, message },
+      id: null,
+    }),
+  );
+}
+
 export function createHttpServer(options: HttpServerOptions) {
   const { config, toolkit, readiness, logger } = options;
   const transports = new Map<string, StreamableHTTPServerTransport>();
@@ -120,35 +136,57 @@ export function createHttpServer(options: HttpServerOptions) {
       ? request.headers["mcp-session-id"][0]
       : request.headers["mcp-session-id"];
     let transport = sessionId ? transports.get(sessionId) : undefined;
-    if (!transport && !sessionId && isInitializeRequest(request.body)) {
-      const newTransport = new StreamableHTTPServerTransport({
-        sessionIdGenerator: () => randomUUID(),
-        onsessioninitialized: (initializedSessionId) => {
-          transports.set(initializedSessionId, newTransport);
-        },
-      });
-      transport = newTransport;
-      const created = newTransport;
-      transport.onclose = () => {
-        const id = created.sessionId;
-        if (id) transports.delete(id);
-      };
-      await toolkit.mcp.connect(transport);
+
+    if (request.method === "POST") {
+      if (!transport && !sessionId && isInitializeRequest(request.body)) {
+        const newTransport = new StreamableHTTPServerTransport({
+          sessionIdGenerator: () => randomUUID(),
+          onsessioninitialized: (initializedSessionId) => {
+            transports.set(initializedSessionId, newTransport);
+          },
+        });
+        transport = newTransport;
+        const created = newTransport;
+        transport.onclose = () => {
+          const id = created.sessionId;
+          if (id) transports.delete(id);
+        };
+        await toolkit.mcp.connect(transport);
+        await transport.handleRequest(request.raw, reply.raw, request.body);
+        return;
+      }
+      if (!transport) {
+        sendRawJsonRpcError(
+          reply,
+          400,
+          -32600,
+          "Missing or invalid session ID",
+        );
+        return;
+      }
       await transport.handleRequest(request.raw, reply.raw, request.body);
       return;
     }
-    if (!transport) {
-      reply.raw.writeHead(400, { "content-type": "application/json" });
-      reply.raw.end(
-        JSON.stringify({
-          jsonrpc: "2.0",
-          error: { code: -32000, message: "Missing or invalid session ID" },
-          id: null,
-        }),
-      );
+
+    if (request.method === "GET") {
+      if (!transport) {
+        sendRawJsonRpcError(reply, 400, -32600, "Valid session required");
+        return;
+      }
+      await transport.handleRequest(request.raw, reply.raw);
       return;
     }
-    await transport.handleRequest(request.raw, reply.raw, request.body);
+
+    if (request.method === "DELETE") {
+      if (!transport) {
+        sendRawJsonRpcError(reply, 404, -32600, "Session not found");
+        return;
+      }
+      await transport.close();
+      reply.raw.writeHead(200, { "content-type": "application/json" });
+      reply.raw.end("{}");
+      return;
+    }
   };
 
   app.route({

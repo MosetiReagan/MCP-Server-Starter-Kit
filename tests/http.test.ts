@@ -97,6 +97,26 @@ describe("HTTP server", () => {
     });
   });
 
+  it("enforces separate MCP session HTTP contracts", async () => {
+    const server = createTestServer(false, true);
+    const getRequest = await server.inject({ method: "GET", url: "/mcp" });
+    expect(getRequest.statusCode).toBe(400);
+    expect(getRequest.json()).toMatchObject({
+      jsonrpc: "2.0",
+      error: { code: -32600 },
+    });
+
+    const deleteRequest = await server.inject({
+      method: "DELETE",
+      url: "/mcp",
+    });
+    expect(deleteRequest.statusCode).toBe(404);
+    expect(deleteRequest.json()).toMatchObject({
+      jsonrpc: "2.0",
+      error: { code: -32600 },
+    });
+  });
+
   it("configures CORS without a wildcard default", async () => {
     const server = createTestServer(false, true);
     const response = await server.inject({
