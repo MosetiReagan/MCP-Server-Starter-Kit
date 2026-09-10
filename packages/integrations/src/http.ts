@@ -18,8 +18,21 @@ export interface HttpOperation<Schema extends ZodRawShape = ZodRawShape> {
   description: string;
   method: HttpMethod;
   path: string;
+  allowPathOverride?: boolean;
   inputSchema?: Schema;
   responseSchema?: ZodType;
+}
+
+function safePath(path: string): string {
+  if (
+    !path.startsWith("/") ||
+    path.startsWith("//") ||
+    path.includes("\\") ||
+    path.includes("..")
+  ) {
+    throw new Error("Unsafe upstream path");
+  }
+  return path;
 }
 
 export function createHttpIntegration(options: HttpIntegrationOptions) {
@@ -77,20 +90,24 @@ export function createHttpIntegration(options: HttpIntegrationOptions) {
           {
             description: operation.description,
             inputSchema: operation.inputSchema ?? {
-              path: z.string().optional(),
+              ...(operation.allowPathOverride
+                ? { path: z.string().optional() }
+                : {}),
               query: z.record(z.string(), z.string()).optional(),
               body: z.unknown().optional(),
             },
           },
           async (input) => {
-            const path = (input.path as string | undefined) ?? operation.path;
+            const path = operation.allowPathOverride
+              ? ((input.path as string | undefined) ?? operation.path)
+              : operation.path;
             const query = new URLSearchParams(
               input.query as Record<string, string> | undefined,
             );
             const suffix = query.size ? `?${query.toString()}` : "";
             const result = await this.request(
               operation.method,
-              `${path}${suffix}`,
+              `${safePath(path)}${suffix}`,
               input.body,
             );
             const validated = operation.responseSchema?.parse(result) ?? result;
