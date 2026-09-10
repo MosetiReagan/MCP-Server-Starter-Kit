@@ -3,7 +3,7 @@ import "dotenv/config";
 import { loadConfig } from "@mcp-starter/core";
 import { run } from "./run.js";
 import { doctor } from "./doctor.js";
-import { inspect } from "./inspect.js";
+import { inspect, parseInspectArguments } from "./inspect.js";
 
 const command = process.argv[2] as string | undefined;
 const args = process.argv.slice(3);
@@ -39,10 +39,11 @@ async function main(): Promise<number> {
       }
     case "inspect": {
       const config = loadConfig();
+      const parsedArguments = parseInspectArguments(args);
       const url =
-        args[0] ??
+        parsedArguments.url ??
         `http://127.0.0.1:${String(config.MCP_PORT)}${config.MCP_ENDPOINT}`;
-      return inspect(url, config.MCP_API_KEY);
+      return inspect(url, parsedArguments.apiKey ?? config.MCP_API_KEY);
     }
     default:
       console.error(`Unknown command: ${command}`);

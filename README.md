@@ -236,6 +236,7 @@ process without receiving MCP capabilities.
 npx mcp-server validate
 npx mcp-server doctor
 npx mcp-server inspect http://127.0.0.1:3000/mcp
+npx mcp-server inspect https://example.com/mcp --api-key <token>
 npx mcp-server dev
 npx mcp-server build
 npx mcp-server start

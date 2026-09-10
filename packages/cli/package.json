@@ -2,6 +2,11 @@
   "name": "@mcp-starter/cli",
   "version": "0.1.3",
   "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": "./dist/index.js"
+  },
   "bin": {
     "mcp-server": "./dist/bin.js"
   },
