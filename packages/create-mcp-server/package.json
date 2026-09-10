@@ -1,0 +1,19 @@
+{
+  "name": "create-mcp-server",
+  "version": "0.1.0",
+  "type": "module",
+  "bin": {
+    "create-mcp-server": "./dist/bin.js"
+  },
+  "files": [
+    "dist",
+    "templates"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "clean": "rm -rf dist *.tsbuildinfo"
+  },
+  "dependencies": {
+    "@clack/prompts": "^0.11.0"
+  }
+}

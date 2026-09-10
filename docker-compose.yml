@@ -1,0 +1,54 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: mcp
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in your shell or .env}
+      POSTGRES_DB: mcp
+    volumes:
+      - ./docker/init:/docker-entrypoint-initdb.d:ro
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mcp -d mcp"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:8-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  mcp:
+    build: .
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      MCP_TRANSPORT: http
+      MCP_HOST: 0.0.0.0
+      MCP_PORT: "3000"
+      MCP_AUTH_ENABLED: "true"
+      MCP_API_KEY: ${MCP_API_KEY:?Set MCP_API_KEY in your shell or .env}
+      CORS_ORIGINS: http://localhost:3000
+      POSTGRES_ENABLED: "true"
+      POSTGRES_URL: postgresql://mcp:${POSTGRES_PASSWORD}@postgres:5432/mcp
+      REDIS_ENABLED: "true"
+      REDIS_URL: redis://redis:6379
+      REDIS_KEY_PREFIX: mcp-complete
+      API_URL: https://jsonplaceholder.typicode.com
+    ports:
+      - "3000:3000"
+
+volumes:
+  postgres-data:
+  redis-data:

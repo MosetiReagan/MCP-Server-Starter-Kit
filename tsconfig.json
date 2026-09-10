@@ -1,0 +1,10 @@
+{
+  "files": [],
+  "references": [
+    { "path": "packages/core" },
+    { "path": "packages/server" },
+    { "path": "packages/integrations" },
+    { "path": "packages/cli" },
+    { "path": "packages/create-mcp-server" }
+  ]
+}

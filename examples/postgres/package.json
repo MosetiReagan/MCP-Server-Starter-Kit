@@ -1,0 +1,21 @@
+{
+  "name": "@mcp-starter/example-postgres",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx src/index.ts",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "@mcp-starter/core": "*",
+    "@mcp-starter/integrations": "*",
+    "@mcp-starter/server": "*",
+    "dotenv": "^17.2.3",
+    "pg": "^8.16.3"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.15.6",
+    "tsx": "^4.20.6"
+  }
+}

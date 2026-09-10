@@ -1,0 +1,162 @@
+import Fastify from "fastify";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
+import { describe, expect, it } from "vitest";
+import { z } from "zod";
+import { createMcpServer, redact } from "@mcp-starter/core";
+import {
+  registerMysqlTools,
+  registerPostgresTools,
+  registerRedisTools,
+} from "@mcp-starter/integrations";
+import { createHttpIntegration } from "@mcp-starter/integrations/http";
+
+describe("integrations", () => {
+  async function connect(toolkit: ReturnType<typeof createMcpServer>) {
+    const [clientTransport, serverTransport] =
+      InMemoryTransport.createLinkedPair();
+    const client = new Client({ name: "integration-client", version: "0.1.0" });
+    await Promise.all([
+      client.connect(clientTransport),
+      toolkit.mcp.connect(serverTransport),
+    ]);
+    return client;
+  }
+
+  it("executes parameterized PostgreSQL search queries", async () => {
+    const toolkit = createMcpServer({ name: "postgres", version: "0.1.0" });
+    const calls: { sql: string; values: unknown[] }[] = [];
+    registerPostgresTools(toolkit, {
+      pool: {
+        query: async (sql: string, values: unknown[]) => {
+          calls.push({ sql, values });
+          return { rows: [{ id: "1", name: "Ada" }] };
+        },
+      },
+      tables: [
+        {
+          name: "users",
+          primaryKey: "id",
+          columns: ["id", "name"],
+          searchColumns: ["name"],
+        },
+      ],
+    } as never);
+    const client = await connect(toolkit);
+    const result = await client.callTool({
+      name: "search_users",
+      arguments: { query: "Ada", limit: 10 },
+    });
+    expect(result.content).toEqual([
+      { type: "text", text: JSON.stringify([{ id: "1", name: "Ada" }]) },
+    ]);
+    expect(calls[0]?.sql).toContain("ILIKE $1");
+    expect(calls[0]?.values).toEqual(["%Ada%", "10"]);
+    await client.close();
+  });
+
+  it("executes MySQL queries with bound parameters", async () => {
+    const toolkit = createMcpServer({ name: "mysql", version: "0.1.0" });
+    const calls: { sql: string; values: unknown[] }[] = [];
+    registerMysqlTools(toolkit, {
+      pool: {
+        query: async (sql: string, values: unknown[]) => {
+          calls.push({ sql, values });
+          return [[{ id: "1", name: "Ada" }], []];
+        },
+      },
+      tables: [
+        {
+          name: "users",
+          primaryKey: "id",
+          columns: ["id", "name"],
+          searchColumns: ["name"],
+        },
+      ],
+    } as never);
+    const client = await connect(toolkit);
+    const result = await client.callTool({
+      name: "search_users",
+      arguments: { query: "Ada", limit: 10 },
+    });
+    expect(result.content).toEqual([
+      { type: "text", text: JSON.stringify([{ id: "1", name: "Ada" }]) },
+    ]);
+    expect(calls[0]?.sql).toContain("LIKE ?");
+    expect(calls[0]?.values).toEqual(["%Ada%", "10"]);
+    await client.close();
+  });
+
+  it("executes Redis operations inside a namespace", async () => {
+    const toolkit = createMcpServer({ name: "redis", version: "0.1.0" });
+    const keys: string[] = [];
+    registerRedisTools(toolkit, {
+      prefix: "my-server",
+      client: {
+        get: async (key) => {
+          keys.push(`get:${key}`);
+          return "value";
+        },
+        set: async (key) => {
+          keys.push(`set:${key}`);
+          return "OK";
+        },
+        del: async (key) => {
+          keys.push(`del:${key}`);
+          return 1;
+        },
+        keys: async () => ["my-server:a"],
+      },
+    });
+    const client = await connect(toolkit);
+    const result = await client.callTool({
+      name: "cache_get",
+      arguments: { key: "user:1" },
+    });
+    expect(result.content).toEqual([
+      { type: "text", text: JSON.stringify({ key: "user:1", value: "value" }) },
+    ]);
+    expect(keys).toEqual(["get:my-server:user:1"]);
+    await client.close();
+  });
+
+  it("maps and validates REST operations as MCP tools", async () => {
+    const app = Fastify();
+    app.get("/users", async () => ({ users: [{ id: 1 }] }));
+    await app.listen({ host: "127.0.0.1", port: 0 });
+    const address = app.server.address();
+    const port = typeof address === "object" && address ? address.port : 0;
+    const api = createHttpIntegration({
+      baseUrl: `http://127.0.0.1:${String(port)}`,
+      retries: 1,
+    });
+    const toolkit = createMcpServer({ name: "api", version: "0.1.0" });
+    api.mapToTools(toolkit, [
+      {
+        name: "list_users",
+        description: "List users",
+        method: "GET",
+        path: "/users",
+        responseSchema: z.object({
+          users: z.array(z.object({ id: z.number() })),
+        }),
+      },
+    ]);
+    const client = await connect(toolkit);
+    const result = await client.callTool({ name: "list_users", arguments: {} });
+    expect(result.content).toEqual([
+      { type: "text", text: JSON.stringify({ users: [{ id: 1 }] }) },
+    ]);
+    await client.close();
+    await app.close();
+  });
+
+  it("redacts sensitive values in logs", () => {
+    expect(
+      redact({ authorization: "secret", nested: { apiKey: "secret" } }),
+    ).toEqual({
+      authorization: "[redacted]",
+      nested: { apiKey: "[redacted]" },
+    });
+  });
+});

@@ -1,0 +1,33 @@
+{
+  "name": "@mcp-starter/server",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "files": [
+    "dist"
+  ],
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": "./dist/index.js"
+  },
+  "bin": {
+    "mcp-server": "./dist/bin.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx src/bin.ts",
+    "clean": "rm -rf dist *.tsbuildinfo"
+  },
+  "dependencies": {
+    "@fastify/cors": "^11.1.0",
+    "@mcp-starter/core": "*",
+    "@modelcontextprotocol/sdk": "1.30.0",
+    "dotenv": "^17.2.3",
+    "fastify": "^5.6.2",
+    "pino": "^10.1.0",
+    "zod": "^4.1.13"
+  },
+  "devDependencies": {
+    "tsx": "^4.20.0"
+  }
+}

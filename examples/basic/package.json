@@ -1,0 +1,19 @@
+{
+  "name": "@mcp-starter/example-basic",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx src/index.ts",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "@mcp-starter/core": "*",
+    "@mcp-starter/server": "*",
+    "dotenv": "^17.2.3",
+    "zod": "^4.1.13"
+  },
+  "devDependencies": {
+    "tsx": "^4.20.6"
+  }
+}
