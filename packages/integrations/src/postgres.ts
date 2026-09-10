@@ -4,6 +4,8 @@ import type { Toolkit } from "@mcp-starter/core";
 import {
   assertIdentifier,
   assertTable,
+  decodeCursor,
+  encodeCursor,
   jsonResult,
   type TableConfig,
 } from "./sql.js";
@@ -28,14 +30,28 @@ export function registerPostgresTools(
     toolkit.tool(
       `list_${table.name}`,
       {
-        description: `List rows from ${table.name}`,
+        description: `List rows from ${table.name} with cursor pagination`,
         annotations: { readOnlyHint: true, idempotentHint: true },
+        inputSchema: {
+          limit: z.number().int().min(1).max(100).default(50),
+          cursor: z.string().min(1).optional(),
+        },
       },
-      async () => {
+      async ({ limit, cursor }) => {
+        const parameters: unknown[] = [limit];
+        const where = cursor ? `WHERE ${primary} > $2` : "";
+        if (cursor) parameters.push(decodeCursor(cursor));
         const result = await options.pool.query(
-          `SELECT ${columns} FROM ${qualified} ORDER BY ${primary} LIMIT 100`,
+          `SELECT ${columns} FROM ${qualified} ${where} ORDER BY ${primary} LIMIT $1`,
+          parameters,
         );
-        return jsonResult(result.rows);
+        const rows = result.rows as Record<string, unknown>[];
+        const lastRow = rows.at(-1);
+        const nextCursor =
+          rows.length === limit && lastRow
+            ? encodeCursor(lastRow[table.primaryKey])
+            : null;
+        return jsonResult({ rows, nextCursor });
       },
     );
 

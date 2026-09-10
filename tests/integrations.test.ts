@@ -55,6 +55,73 @@ describe("integrations", () => {
     await client.close();
   });
 
+  it("paginates PostgreSQL rows with opaque cursors", async () => {
+    const toolkit = createMcpServer({
+      name: "postgres-pagination",
+      version: "0.1.0",
+    });
+    const calls: { sql: string; values: unknown[] }[] = [];
+    registerPostgresTools(toolkit, {
+      pool: {
+        query: async (sql: string, values: unknown[]) => {
+          calls.push({ sql, values });
+          return {
+            rows:
+              values.length === 1
+                ? [
+                    { id: "1", name: "Ada" },
+                    { id: "2", name: "Grace" },
+                  ]
+                : [{ id: "3", name: "Alan" }],
+          };
+        },
+      },
+      tables: [
+        {
+          name: "users",
+          primaryKey: "id",
+          columns: ["id", "name"],
+        },
+      ],
+    } as never);
+    const client = await connect(toolkit);
+    const firstPage = await client.callTool({
+      name: "list_users",
+      arguments: { limit: 2 },
+    });
+    expect(firstPage.content).toEqual([
+      {
+        type: "text",
+        text: JSON.stringify({
+          rows: [
+            { id: "1", name: "Ada" },
+            { id: "2", name: "Grace" },
+          ],
+          nextCursor: Buffer.from(JSON.stringify("2")).toString("base64url"),
+        }),
+      },
+    ]);
+    const secondPage = await client.callTool({
+      name: "list_users",
+      arguments: {
+        limit: 2,
+        cursor: Buffer.from(JSON.stringify("2")).toString("base64url"),
+      },
+    });
+    expect(secondPage.content).toEqual([
+      {
+        type: "text",
+        text: JSON.stringify({
+          rows: [{ id: "3", name: "Alan" }],
+          nextCursor: null,
+        }),
+      },
+    ]);
+    expect(calls[1]?.sql).toContain('WHERE "id" > $2');
+    expect(calls[1]?.values).toEqual([2, "2"]);
+    await client.close();
+  });
+
   it("executes MySQL queries with bound parameters", async () => {
     const toolkit = createMcpServer({ name: "mysql", version: "0.1.0" });
     const calls: { sql: string; values: unknown[] }[] = [];

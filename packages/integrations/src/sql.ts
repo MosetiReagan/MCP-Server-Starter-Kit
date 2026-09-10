@@ -13,6 +13,15 @@ export function assertIdentifier(value: string): string {
   return value;
 }
 
+export function encodeCursor(value: unknown): string {
+  return Buffer.from(JSON.stringify(value), "utf8").toString("base64url");
+}
+
+export function decodeCursor(cursor: string): unknown {
+  const decoded = Buffer.from(cursor, "base64url").toString("utf8");
+  return JSON.parse(decoded) as unknown;
+}
+
 export function assertTable(table: TableConfig): void {
   const columns = new Set(table.columns);
   if (!identifier.test(table.name))

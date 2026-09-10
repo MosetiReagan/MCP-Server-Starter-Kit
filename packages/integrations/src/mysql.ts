@@ -4,6 +4,8 @@ import type { Toolkit } from "@mcp-starter/core";
 import {
   assertIdentifier,
   assertTable,
+  decodeCursor,
+  encodeCursor,
   jsonResult,
   type TableConfig,
 } from "./sql.js";
@@ -26,14 +28,28 @@ export function registerMysqlTools(
     toolkit.tool(
       `list_${table.name}`,
       {
-        description: `List rows from ${table.name}`,
+        description: `List rows from ${table.name} with cursor pagination`,
         annotations: { readOnlyHint: true, idempotentHint: true },
+        inputSchema: {
+          limit: z.number().int().min(1).max(100).default(50),
+          cursor: z.string().min(1).optional(),
+        },
       },
-      async () => {
+      async ({ limit, cursor }) => {
+        const parameters: unknown[] = [limit];
+        const where = cursor ? `WHERE ${primary} > ?` : "";
+        if (cursor) parameters.push(decodeCursor(cursor));
         const [rows] = await options.pool.query(
-          `SELECT ${columns} FROM \`${table.name}\` ORDER BY ${primary} LIMIT 100`,
+          `SELECT ${columns} FROM \`${table.name}\` ${where} ORDER BY ${primary} LIMIT ?`,
+          parameters,
         );
-        return jsonResult(rows);
+        const listedRows = rows as Record<string, unknown>[];
+        const lastRow = listedRows.at(-1);
+        const nextCursor =
+          listedRows.length === limit && lastRow
+            ? encodeCursor(lastRow[table.primaryKey])
+            : null;
+        return jsonResult({ rows: listedRows, nextCursor });
       },
     );
     toolkit.tool(
