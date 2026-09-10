@@ -71,4 +71,45 @@ describe("MCP core", () => {
     expect((await client.listPrompts()).prompts).toHaveLength(1);
     await client.close();
   });
+
+  it("passes progress metadata through tool handlers", async () => {
+    const toolkit = createMcpServer({
+      name: "progress-server",
+      version: "1.0.0",
+    });
+    toolkit.tool(
+      "count",
+      { description: "Count with progress", inputSchema: {} },
+      async (_args, extra) => {
+        const progressToken = extra._meta?.progressToken;
+        if (progressToken !== undefined) {
+          await extra.sendNotification({
+            method: "notifications/progress",
+            params: { progressToken, progress: 1, total: 1 },
+          });
+        }
+        return { content: [{ type: "text", text: "done" }] };
+      },
+    );
+    const [clientTransport, serverTransport] =
+      InMemoryTransport.createLinkedPair();
+    const client = new Client({ name: "progress-client", version: "1.0.0" });
+    await Promise.all([
+      client.connect(clientTransport),
+      toolkit.mcp.connect(serverTransport),
+    ]);
+    const progress: number[] = [];
+    const result = await client.callTool(
+      { name: "count", arguments: {} },
+      undefined,
+      {
+        onprogress: (notification) => {
+          progress.push(notification.progress);
+        },
+      },
+    );
+    expect(result.content).toEqual([{ type: "text", text: "done" }]);
+    expect(progress).toEqual([1]);
+    await client.close();
+  });
 });

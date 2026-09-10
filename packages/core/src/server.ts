@@ -6,8 +6,11 @@ import type {
   ReadResourceResult,
   GetPromptResult,
   CallToolResult,
+  ServerNotification,
+  ServerRequest,
   ToolAnnotations,
 } from "@modelcontextprotocol/sdk/types.js";
+import type { RequestHandlerExtra } from "@modelcontextprotocol/sdk/shared/protocol.js";
 import { z, type ZodRawShape } from "zod";
 
 export interface McpServerOptions {
@@ -23,7 +26,10 @@ export interface ToolDefinition<Args extends ZodRawShape> {
 
 type ToolHandler<Args extends ZodRawShape> = (
   args: zInfer<Args>,
+  extra: ToolHandlerExtra,
 ) => Promise<CallToolResult> | CallToolResult;
+
+type ToolHandlerExtra = RequestHandlerExtra<ServerRequest, ServerNotification>;
 
 type zInfer<Args extends ZodRawShape> = z.output<z.ZodObject<Args>>;
 
