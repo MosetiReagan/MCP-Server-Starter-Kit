@@ -1,6 +1,6 @@
 {
   "name": "create-mcp-server",
-  "version": "0.1.0",
+  "version": "0.1.4",
   "type": "module",
   "bin": {
     "create-mcp-server": "./dist/bin.js"

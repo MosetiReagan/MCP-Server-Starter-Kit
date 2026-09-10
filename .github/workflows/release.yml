@@ -13,6 +13,15 @@ jobs:
     permissions:
       contents: read
       id-token: write
+    strategy:
+      fail-fast: false
+      matrix:
+        package:
+          - "@mcp-starter/core"
+          - "@mcp-starter/server"
+          - "@mcp-starter/integrations"
+          - "@mcp-starter/cli"
+          - "create-mcp-server"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -22,6 +31,6 @@ jobs:
           registry-url: https://registry.npmjs.org
       - run: npm ci
       - run: npm run build
-      - run: npm publish --workspaces --access public
+      - run: npm publish --workspace "${{ matrix.package }}" --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
