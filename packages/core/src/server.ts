@@ -152,7 +152,7 @@ export class Toolkit {
 
   notifyResourceChanged(uri: string): void {
     if (!this.subscribableResources.has(uri)) return;
-    if (this.subscriptions.get(uri)?.size === 0) return;
+    if ((this.subscriptions.get(uri)?.size ?? 0) === 0) return;
     void this.mcp.server.sendResourceUpdated({ uri }).catch(() => undefined);
   }
 

@@ -174,6 +174,9 @@ describe("MCP core", () => {
         notifications.push(notification);
       },
     );
+    toolkit.notifyResourceChanged(uri);
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(notifications).toHaveLength(0);
     await client.subscribeResource({ uri });
     toolkit.notifyResourceChanged(uri);
     await new Promise((resolve) => setImmediate(resolve));
