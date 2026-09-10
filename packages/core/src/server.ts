@@ -9,6 +9,7 @@ import type {
   ServerNotification,
   ServerRequest,
   ToolAnnotations,
+  LoggingLevel,
 } from "@modelcontextprotocol/sdk/types.js";
 import type { RequestHandlerExtra } from "@modelcontextprotocol/sdk/shared/protocol.js";
 import { z, type ZodRawShape } from "zod";
@@ -38,9 +39,39 @@ export class Toolkit {
   readonly toolNames = new Set<string>();
   readonly resourceNames = new Set<string>();
   readonly promptNames = new Set<string>();
+  readonly loggers: Record<LoggingLevel, (data: unknown) => void>;
 
   constructor(options: McpServerOptions) {
-    this.mcp = new McpServer({ name: options.name, version: options.version });
+    this.mcp = new McpServer(
+      { name: options.name, version: options.version },
+      { capabilities: { logging: {} } },
+    );
+    this.loggers = {
+      debug: (data) => {
+        this.log("debug", data);
+      },
+      info: (data) => {
+        this.log("info", data);
+      },
+      notice: (data) => {
+        this.log("notice", data);
+      },
+      warning: (data) => {
+        this.log("warning", data);
+      },
+      error: (data) => {
+        this.log("error", data);
+      },
+      critical: (data) => {
+        this.log("critical", data);
+      },
+      alert: (data) => {
+        this.log("alert", data);
+      },
+      emergency: (data) => {
+        this.log("emergency", data);
+      },
+    };
   }
 
   tool<Args extends ZodRawShape>(
@@ -101,6 +132,12 @@ export class Toolkit {
       { description, argsSchema },
       handler as never,
     );
+  }
+
+  log(level: LoggingLevel, data: unknown): void {
+    void this.mcp
+      .sendLoggingMessage({ level, data: data ?? null })
+      .catch(() => undefined);
   }
 }
 

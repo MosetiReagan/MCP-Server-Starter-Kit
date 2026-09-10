@@ -1,8 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
+import {
+  type LoggingMessageNotification,
+  LoggingMessageNotificationSchema,
+} from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
-import { createMcpServer } from "@mcp-starter/core";
+import { createMcpLogger, createMcpServer } from "@mcp-starter/core";
 
 describe("MCP core", () => {
   it("registers and executes a validated tool", async () => {
@@ -110,6 +114,37 @@ describe("MCP core", () => {
     );
     expect(result.content).toEqual([{ type: "text", text: "done" }]);
     expect(progress).toEqual([1]);
+    await client.close();
+  });
+
+  it("bridges Pino logs to MCP notifications", async () => {
+    const toolkit = createMcpServer({
+      name: "logging-server",
+      version: "1.0.0",
+    });
+    const [clientTransport, serverTransport] =
+      InMemoryTransport.createLinkedPair();
+    const client = new Client({ name: "logging-client", version: "1.0.0" });
+    await Promise.all([
+      client.connect(clientTransport),
+      toolkit.mcp.connect(serverTransport),
+    ]);
+    const notifications: LoggingMessageNotification[] = [];
+    client.setNotificationHandler(
+      LoggingMessageNotificationSchema,
+      (notification) => {
+        notifications.push(notification);
+      },
+    );
+    const logger = createMcpLogger(toolkit, "info", "logging-test");
+    logger.info("hello from Pino");
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(notifications).toHaveLength(1);
+    expect(notifications[0]?.method).toBe("notifications/message");
+    expect(notifications[0]?.params.level).toBe("info");
+    expect((notifications[0]?.params.data as { msg?: unknown }).msg).toBe(
+      "hello from Pino",
+    );
     await client.close();
   });
 });
