@@ -231,6 +231,17 @@ Authentication can be disabled only explicitly for local development. Health
 and readiness endpoints remain unauthenticated so orchestrators can monitor the
 process without receiving MCP capabilities.
 
+Streamable HTTP sessions are bounded in both directions:
+
+```env
+MAX_SESSIONS=100
+MAX_SESSIONS_PER_IP=10
+```
+
+`MAX_SESSIONS` protects overall process memory, while `MAX_SESSIONS_PER_IP`
+prevents one client address from opening excessive concurrent sessions. Tune
+these values for your deployment and reverse-proxy configuration.
+
 ## CLI
 
 ```bash

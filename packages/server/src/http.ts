@@ -64,6 +64,8 @@ function sendRawJsonRpcError(
 export function createHttpServer(options: HttpServerOptions) {
   const { config, toolkit, readiness, logger } = options;
   const transports = new Map<string, StreamableHTTPServerTransport>();
+  const sessionsPerIp = new Map<string, number>();
+  let activeSessions = 0;
   const origins = config.CORS_ORIGINS.split(",")
     .map((origin) => origin.trim())
     .filter(Boolean);
@@ -139,6 +141,25 @@ export function createHttpServer(options: HttpServerOptions) {
 
     if (request.method === "POST") {
       if (!transport && !sessionId && isInitializeRequest(request.body)) {
+        const clientIp = request.ip;
+        if (activeSessions >= config.MAX_SESSIONS) {
+          sendRawJsonRpcError(
+            reply,
+            503,
+            -32603,
+            "Server at session capacity",
+          );
+          return;
+        }
+        if ((sessionsPerIp.get(clientIp) ?? 0) >= config.MAX_SESSIONS_PER_IP) {
+          sendRawJsonRpcError(
+            reply,
+            429,
+            -32003,
+            "Too many sessions from this IP",
+          );
+          return;
+        }
         const newTransport = new StreamableHTTPServerTransport({
           sessionIdGenerator: () => randomUUID(),
           onsessioninitialized: (initializedSessionId) => {
@@ -147,9 +168,15 @@ export function createHttpServer(options: HttpServerOptions) {
         });
         transport = newTransport;
         const created = newTransport;
+        activeSessions += 1;
+        sessionsPerIp.set(clientIp, (sessionsPerIp.get(clientIp) ?? 0) + 1);
         transport.onclose = () => {
           const id = created.sessionId;
           if (id) transports.delete(id);
+          activeSessions = Math.max(0, activeSessions - 1);
+          const remainingSessions = (sessionsPerIp.get(clientIp) ?? 1) - 1;
+          if (remainingSessions <= 0) sessionsPerIp.delete(clientIp);
+          else sessionsPerIp.set(clientIp, remainingSessions);
         };
         await toolkit.mcp.connect(transport);
         await transport.handleRequest(request.raw, reply.raw, request.body);

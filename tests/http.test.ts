@@ -17,6 +17,8 @@ const config: ServerConfig = {
   CORS_ORIGINS: "http://localhost:5173",
   REQUEST_BODY_LIMIT: 1024,
   REQUEST_TIMEOUT_MS: 5000,
+  MAX_SESSIONS: 100,
+  MAX_SESSIONS_PER_IP: 10,
   LOG_LEVEL: "fatal",
   POSTGRES_ENABLED: false,
   MYSQL_ENABLED: false,
@@ -85,7 +87,10 @@ describe("HTTP server", () => {
     const response = await server.inject({
       method: "POST",
       url: "/mcp",
-      headers: { "content-type": "application/json" },
+      headers: {
+        "content-type": "application/json",
+        accept: "application/json, text/event-stream",
+      },
       payload: "{",
     });
     expect(response.statusCode).toBe(400);
@@ -114,6 +119,49 @@ describe("HTTP server", () => {
     expect(deleteRequest.json()).toMatchObject({
       jsonrpc: "2.0",
       error: { code: -32600 },
+    });
+  });
+
+  it("limits sessions per client IP", async () => {
+    const server = createHttpServer({
+      config: { ...config, MCP_AUTH_ENABLED: false, MAX_SESSIONS_PER_IP: 1 },
+      toolkit: createMcpServer({ name: "limited", version: "0.1.0" }),
+      readiness: new ReadinessRegistry(),
+      logger: { info: () => undefined, error: () => undefined },
+    });
+    servers.push(server);
+    const initialize = {
+      jsonrpc: "2.0" as const,
+      id: 1,
+      method: "initialize",
+      params: {
+        protocolVersion: "2025-11-25",
+        capabilities: {},
+        clientInfo: { name: "limited-client", version: "1.0.0" },
+      },
+    };
+    const first = await server.inject({
+      method: "POST",
+      url: "/mcp",
+      headers: {
+        "content-type": "application/json",
+        accept: "application/json, text/event-stream",
+      },
+      payload: initialize,
+    });
+    expect(first.statusCode).toBe(200);
+    expect(first.headers["mcp-session-id"]).toEqual(expect.any(String));
+    const second = await server.inject({
+      method: "POST",
+      url: "/mcp",
+      headers: { "content-type": "application/json" },
+      payload: { ...initialize, id: 2 },
+    });
+    expect(second.statusCode).toBe(429);
+    expect(parseJson(second.body)).toMatchObject({
+      jsonrpc: "2.0",
+      error: { code: -32003, message: "Too many sessions from this IP" },
+      id: null,
     });
   });
 

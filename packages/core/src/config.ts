@@ -29,6 +29,8 @@ const schema = z.object({
     .default("http://localhost:3000,http://127.0.0.1:3000"),
   REQUEST_BODY_LIMIT: z.coerce.number().int().min(1024).default(1048576),
   REQUEST_TIMEOUT_MS: z.coerce.number().int().min(1000).default(30000),
+  MAX_SESSIONS: z.coerce.number().int().min(1).default(100),
+  MAX_SESSIONS_PER_IP: z.coerce.number().int().min(1).default(10),
   LOG_LEVEL: z
     .enum(["fatal", "error", "warn", "info", "debug", "trace"])
     .default("info"),
