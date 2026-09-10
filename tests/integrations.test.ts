@@ -285,6 +285,51 @@ describe("integrations", () => {
     await app.close();
   });
 
+  it("enforces allowed REST path prefixes", async () => {
+    const app = Fastify();
+    app.get("/public/users", async () => ({ users: [{ id: 1 }] }));
+    app.get("/private/users", async () => ({ secret: true }));
+    await app.listen({ host: "127.0.0.1", port: 0 });
+    const address = app.server.address();
+    const port = typeof address === "object" && address ? address.port : 0;
+    const api = createHttpIntegration({
+      baseUrl: `http://127.0.0.1:${String(port)}`,
+    });
+    const toolkit = createMcpServer({
+      name: "api-prefixes",
+      version: "0.1.0",
+    });
+    api.mapToTools(toolkit, [
+      {
+        name: "list_users",
+        description: "List users",
+        method: "GET",
+        path: "/public/users",
+        allowPathOverride: true,
+        allowedPathPrefixes: ["/public"],
+        responseSchema: z.object({
+          users: z.array(z.object({ id: z.number() })),
+        }),
+      },
+    ]);
+    const client = await connect(toolkit);
+    const denied = await client.callTool({
+      name: "list_users",
+      arguments: { path: "/private/users" },
+    });
+    expect(denied.isError).toBe(true);
+
+    const allowed = await client.callTool({
+      name: "list_users",
+      arguments: { path: "/public/users" },
+    });
+    expect(allowed.content).toEqual([
+      { type: "text", text: JSON.stringify({ users: [{ id: 1 }] }) },
+    ]);
+    await client.close();
+    await app.close();
+  });
+
   it("redacts sensitive values in logs", () => {
     expect(
       redact({ authorization: "secret", nested: { apiKey: "secret" } }),

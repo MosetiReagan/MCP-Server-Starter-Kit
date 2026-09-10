@@ -19,6 +19,7 @@ export interface HttpOperation<Schema extends ZodRawShape = ZodRawShape> {
   method: HttpMethod;
   path: string;
   allowPathOverride?: boolean;
+  allowedPathPrefixes?: readonly string[];
   inputSchema?: Schema;
   responseSchema?: ZodType;
 }
@@ -33,6 +34,14 @@ function safePath(path: string): string {
     throw new Error("Unsafe upstream path");
   }
   return path;
+}
+
+function pathMatchesPrefix(path: string, prefix: string): boolean {
+  safePath(prefix);
+  return (
+    path === prefix ||
+    path.startsWith(prefix.endsWith("/") ? prefix : `${prefix}/`)
+  );
 }
 
 export function createHttpIntegration(options: HttpIntegrationOptions) {
@@ -85,6 +94,11 @@ export function createHttpIntegration(options: HttpIntegrationOptions) {
     },
     mapToTools(toolkit: Toolkit, operations: readonly HttpOperation[]) {
       for (const operation of operations) {
+        if (operation.allowedPathPrefixes && !operation.allowPathOverride) {
+          throw new Error(
+            `allowedPathPrefixes requires allowPathOverride for ${operation.name}`,
+          );
+        }
         toolkit.tool(
           operation.name,
           {
@@ -109,6 +123,15 @@ export function createHttpIntegration(options: HttpIntegrationOptions) {
             const path = operation.allowPathOverride
               ? ((input.path as string | undefined) ?? operation.path)
               : operation.path;
+            if (
+              operation.allowPathOverride &&
+              operation.allowedPathPrefixes &&
+              !operation.allowedPathPrefixes.some((prefix) =>
+                pathMatchesPrefix(path, prefix),
+              )
+            ) {
+              throw new Error("Path not allowed");
+            }
             const query = new URLSearchParams(
               input.query as Record<string, string> | undefined,
             );
