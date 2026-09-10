@@ -1,4 +1,4 @@
-import Fastify from "fastify";
+import Fastify, { type FastifyReply } from "fastify";
 import cors from "@fastify/cors";
 import { randomUUID, timingSafeEqual } from "node:crypto";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
@@ -15,6 +15,34 @@ export interface HttpServerOptions {
     info: (value: object | string) => void;
     error: (value: object | string) => void;
   };
+}
+
+const JSONRPC_ERROR_CODES = {
+  400: -32600,
+  401: -32001,
+  404: -32600,
+  405: -32600,
+  408: -32003,
+  413: -32600,
+  429: -32003,
+  500: -32603,
+  503: -32603,
+} as const;
+
+function sendJsonRpcError(
+  reply: FastifyReply,
+  httpStatus: number,
+  code: number,
+  message: string,
+) {
+  return reply
+    .code(httpStatus)
+    .header("content-type", "application/json")
+    .send({
+      jsonrpc: "2.0",
+      error: { code, message },
+      id: null,
+    });
 }
 
 export function createHttpServer(options: HttpServerOptions) {
@@ -58,10 +86,19 @@ export function createHttpServer(options: HttpServerOptions) {
         tokenLength !== apiKey.length ||
         !timingSafeEqual(Buffer.from(token ?? ""), Buffer.from(apiKey))
       ) {
-        await reply
-          .code(401)
-          .header("www-authenticate", "Bearer")
-          .send({ error: "unauthorized" });
+        reply.hijack();
+        reply.raw.writeHead(401, {
+          "www-authenticate": "Bearer",
+          "content-type": "application/json",
+        });
+        reply.raw.end(
+          JSON.stringify({
+            jsonrpc: "2.0",
+            error: { code: -32001, message: "Unauthorized" },
+            id: null,
+          }),
+        );
+        return;
       }
     }
   });
@@ -120,13 +157,32 @@ export function createHttpServer(options: HttpServerOptions) {
     handler: handleMcp,
   });
 
-  app.setErrorHandler((error: unknown, request, reply) => {
+  app.setErrorHandler(async (error: unknown, request, reply) => {
     const message =
       error instanceof Error ? error.message : "internal_server_error";
     const statusCode = (error as { statusCode?: number }).statusCode;
-    logger.error({ requestId: request.id, error: message });
-    return reply.code(statusCode ?? 500).send({
-      error: statusCode && statusCode < 500 ? message : "internal_server_error",
+    const responseStatus = statusCode ?? 500;
+    logger.error({
+      requestId: request.id,
+      error: message,
+      statusCode: responseStatus,
+      url: request.url,
+    });
+    if (request.url.startsWith(config.MCP_ENDPOINT)) {
+      const rpcCode =
+        (JSONRPC_ERROR_CODES as Record<number, number | undefined>)[
+          responseStatus
+        ] ?? -32603;
+      const safeMessage = responseStatus < 500 ? message : "internal_error";
+      return await sendJsonRpcError(
+        reply,
+        responseStatus < 500 ? responseStatus : 400,
+        rpcCode,
+        safeMessage,
+      );
+    }
+    return await reply.code(responseStatus).send({
+      error: responseStatus < 500 ? message : "internal_server_error",
     });
   });
 

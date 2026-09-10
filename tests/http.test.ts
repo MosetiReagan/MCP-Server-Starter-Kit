@@ -25,6 +25,10 @@ const config: ServerConfig = {
 
 const servers: ReturnType<typeof createHttpServer>[] = [];
 
+function parseJson(text: string): unknown {
+  return JSON.parse(text) as unknown;
+}
+
 afterAll(async () => {
   await Promise.all(servers.map((server) => server.stop()));
 });
@@ -62,7 +66,11 @@ describe("HTTP server", () => {
     const server = createTestServer(true, true);
     const unauthorized = await server.inject("/mcp");
     expect(unauthorized.statusCode).toBe(401);
-    expect(unauthorized.json()).toEqual({ error: "unauthorized" });
+    expect(unauthorized.json()).toEqual({
+      jsonrpc: "2.0",
+      error: { code: -32001, message: "Unauthorized" },
+      id: null,
+    });
     const response = await server.inject({
       method: "POST",
       url: "/mcp",
@@ -70,6 +78,23 @@ describe("HTTP server", () => {
       payload: {},
     });
     expect(response.statusCode).toBe(400);
+  });
+
+  it("returns JSON-RPC errors for malformed MCP requests", async () => {
+    const server = createTestServer(false, true);
+    const response = await server.inject({
+      method: "POST",
+      url: "/mcp",
+      headers: { "content-type": "application/json" },
+      payload: "{",
+    });
+    expect(response.statusCode).toBe(400);
+    const body = parseJson(response.body);
+    expect(body).toMatchObject({
+      jsonrpc: "2.0",
+      error: { code: -32600 },
+      id: null,
+    });
   });
 
   it("configures CORS without a wildcard default", async () => {
