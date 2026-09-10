@@ -3,7 +3,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { createMcpServer, redact } from "@mcp-starter/core";
+import { createMcpServer, ExternalApiError, redact } from "@mcp-starter/core";
 import {
   registerMysqlTools,
   registerPostgresTools,
@@ -327,6 +327,48 @@ describe("integrations", () => {
       { type: "text", text: JSON.stringify({ users: [{ id: 1 }] }) },
     ]);
     await client.close();
+    await app.close();
+  });
+
+  it("does not retry non-retryable upstream client errors", async () => {
+    const app = Fastify();
+    let requests = 0;
+    app.get("/bad-request", async (_request, reply) => {
+      requests += 1;
+      return await reply.code(400).send({ error: "bad_request" });
+    });
+    await app.listen({ host: "127.0.0.1", port: 0 });
+    const address = app.server.address();
+    const port = typeof address === "object" && address ? address.port : 0;
+    const api = createHttpIntegration({
+      baseUrl: `http://127.0.0.1:${String(port)}`,
+      retries: 2,
+    });
+    await expect(api.request("GET", "/bad-request")).rejects.toBeInstanceOf(
+      ExternalApiError,
+    );
+    expect(requests).toBe(1);
+    await app.close();
+  });
+
+  it("retries retryable upstream server errors", async () => {
+    const app = Fastify();
+    let requests = 0;
+    app.get("/server-error", async (_request, reply) => {
+      requests += 1;
+      return await reply.code(500).send({ error: "server_error" });
+    });
+    await app.listen({ host: "127.0.0.1", port: 0 });
+    const address = app.server.address();
+    const port = typeof address === "object" && address ? address.port : 0;
+    const api = createHttpIntegration({
+      baseUrl: `http://127.0.0.1:${String(port)}`,
+      retries: 1,
+    });
+    await expect(api.request("GET", "/server-error")).rejects.toBeInstanceOf(
+      ExternalApiError,
+    );
+    expect(requests).toBe(2);
     await app.close();
   });
 

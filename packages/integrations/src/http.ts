@@ -53,8 +53,9 @@ export function createHttpIntegration(options: HttpIntegrationOptions) {
       body?: unknown,
     ): Promise<ResponseType> {
       const url = new URL(path.replace(/^\//, ""), baseUrl);
+      const maxRetries = options.retries ?? 0;
       let lastError: unknown;
-      for (let attempt = 0; attempt <= (options.retries ?? 0); attempt += 1) {
+      for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
         try {
           const response = await request(url, {
             method,
@@ -68,24 +69,30 @@ export function createHttpIntegration(options: HttpIntegrationOptions) {
             bodyTimeout: options.timeoutMs ?? 10_000,
             headersTimeout: options.timeoutMs ?? 10_000,
           });
+          const text = await response.body.text();
+          const parsed: unknown = text ? (JSON.parse(text) as unknown) : null;
+          if (response.statusCode >= 400 && response.statusCode < 500)
+            throw new ExternalApiError(
+              `Upstream returned ${String(response.statusCode)}`,
+              false,
+            );
           if (response.statusCode >= 500)
             throw new ExternalApiError(
               `Upstream returned ${String(response.statusCode)}`,
-            );
-          const text = await response.body.text();
-          const parsed: unknown = text ? (JSON.parse(text) as unknown) : null;
-          if (response.statusCode >= 400)
-            throw new ExternalApiError(
-              `Upstream returned ${String(response.statusCode)}`,
+              true,
             );
           return parsed as ResponseType;
         } catch (error) {
-          lastError = error;
-          if (
-            error instanceof ExternalApiError &&
-            attempt === (options.retries ?? 0)
-          )
+          if (error instanceof ExternalApiError && !error.retryable)
             throw error;
+          if (attempt === maxRetries) {
+            throw error instanceof Error
+              ? error
+              : new ExternalApiError("External API request failed");
+          }
+          lastError = error;
+          const delay = 100 * 2 ** attempt + Math.random() * 50;
+          await new Promise((resolve) => setTimeout(resolve, delay));
         }
       }
       throw lastError instanceof Error

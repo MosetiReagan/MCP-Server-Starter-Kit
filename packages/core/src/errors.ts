@@ -12,6 +12,12 @@ export class DependencyError extends Error {
 
 export class ExternalApiError extends Error {
   override readonly name = "ExternalApiError";
+  readonly retryable: boolean;
+
+  constructor(message: string, retryable = false) {
+    super(message);
+    this.retryable = retryable;
+  }
 }
 
 export function errorMessage(error: unknown): string {
