@@ -59,9 +59,20 @@ readiness.add("postgres", async () => {
 readiness.add("redis", async () => {
   await redis.ping();
 });
-await createHttpServer({
+const server = createHttpServer({
   config,
   toolkit,
   readiness,
   logger: createLogger(config.LOG_LEVEL),
-}).start();
+});
+let shuttingDown = false;
+const shutdown = async () => {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  await server.stop();
+  await Promise.allSettled([pool.end(), redis.quit()]);
+  process.exit(0);
+};
+process.once("SIGINT", () => void shutdown());
+process.once("SIGTERM", () => void shutdown());
+await server.start();
