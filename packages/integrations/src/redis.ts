@@ -6,7 +6,11 @@ export interface RedisOptions {
     get(key: string): Promise<string | null>;
     set(key: string, value: string, mode: "EX", ttl: number): Promise<unknown>;
     del(key: string): Promise<number>;
-    keys(pattern: string): Promise<string[]>;
+    scan(
+      cursor: number,
+      match: string,
+      count: number,
+    ): Promise<[cursor: string, keys: string[]]>;
   };
   prefix: string;
 }
@@ -74,11 +78,22 @@ export function registerRedisTools(
       inputSchema: { limit: z.number().int().min(1).max(100).default(20) },
     },
     async ({ limit }) => {
-      const keys = (await config.client.keys(`${config.prefix}:*`)).map(
-        (stored) => stored.slice(`${config.prefix}:`.length),
-      );
+      const prefixLength = `${config.prefix}:`.length;
+      const keys = new Set<string>();
+      let cursor = 0;
+      do {
+        const [nextCursor, found] = await config.client.scan(
+          cursor,
+          `${config.prefix}:*`,
+          limit,
+        );
+        cursor = Number.parseInt(nextCursor, 10);
+        for (const stored of found) keys.add(stored.slice(prefixLength));
+      } while (cursor !== 0 && keys.size < limit);
       return {
-        content: [{ type: "text", text: JSON.stringify(keys.slice(0, limit)) }],
+        content: [
+          { type: "text", text: JSON.stringify([...keys].slice(0, limit)) },
+        ],
       };
     },
   );

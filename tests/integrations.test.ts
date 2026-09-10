@@ -120,6 +120,39 @@ describe("integrations", () => {
     await client.close();
   });
 
+  it("lists Redis keys incrementally with SCAN", async () => {
+    const toolkit = createMcpServer({ name: "redis-scan", version: "0.1.0" });
+    const scans: { cursor: number; match: string; count: number }[] = [];
+    registerRedisTools(toolkit, {
+      prefix: "my-server",
+      client: {
+        get: async () => null,
+        set: async () => "OK",
+        del: async () => 0,
+        scan: async (cursor: number, match: string, count: number) => {
+          scans.push({ cursor, match, count });
+          return [
+            cursor === 0 ? "1" : "0",
+            cursor === 0 ? ["my-server:a"] : ["my-server:b"],
+          ];
+        },
+      },
+    });
+    const client = await connect(toolkit);
+    const result = await client.callTool({
+      name: "cache_list_keys",
+      arguments: { limit: 2 },
+    });
+    expect(result.content).toEqual([
+      { type: "text", text: JSON.stringify(["a", "b"]) },
+    ]);
+    expect(scans).toEqual([
+      { cursor: 0, match: "my-server:*", count: 2 },
+      { cursor: 1, match: "my-server:*", count: 2 },
+    ]);
+    await client.close();
+  });
+
   it("maps and validates REST operations as MCP tools", async () => {
     const app = Fastify();
     app.get("/users", async () => ({ users: [{ id: 1 }] }));
