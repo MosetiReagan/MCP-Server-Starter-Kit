@@ -1,6 +1,6 @@
 import Fastify from "fastify";
 import cors from "@fastify/cors";
-import { randomUUID } from "node:crypto";
+import { randomUUID, timingSafeEqual } from "node:crypto";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
 import type { Toolkit } from "@mcp-starter/core";
@@ -51,7 +51,13 @@ export function createHttpServer(options: HttpServerOptions) {
       const token = authorization?.startsWith("Bearer ")
         ? authorization.slice(7)
         : undefined;
-      if (!token || token.length < 16 || token !== config.MCP_API_KEY) {
+      const apiKey = config.MCP_API_KEY ?? "";
+      const tokenLength = token?.length ?? -1;
+      if (
+        tokenLength < 16 ||
+        tokenLength !== apiKey.length ||
+        !timingSafeEqual(Buffer.from(token ?? ""), Buffer.from(apiKey))
+      ) {
         await reply
           .code(401)
           .header("www-authenticate", "Bearer")

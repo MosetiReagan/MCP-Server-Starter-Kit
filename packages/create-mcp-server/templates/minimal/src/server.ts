@@ -1,6 +1,6 @@
 import Fastify from "fastify";
 import cors from "@fastify/cors";
-import { randomUUID } from "node:crypto";
+import { randomUUID, timingSafeEqual } from "node:crypto";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
@@ -98,7 +98,13 @@ export async function startHttp(config: Config, toolkit: McpServer) {
       const token = request.headers.authorization?.startsWith("Bearer ")
         ? request.headers.authorization.slice(7)
         : undefined;
-      if (token !== config.MCP_API_KEY)
+      const apiKey = config.MCP_API_KEY ?? "";
+      const tokenLength = token?.length ?? -1;
+      if (
+        tokenLength < 16 ||
+        tokenLength !== apiKey.length ||
+        !timingSafeEqual(Buffer.from(token ?? ""), Buffer.from(apiKey))
+      )
         return await reply
           .code(401)
           .header("www-authenticate", "Bearer")
