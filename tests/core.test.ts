@@ -4,6 +4,8 @@ import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import {
   type LoggingMessageNotification,
   LoggingMessageNotificationSchema,
+  ResourceUpdatedNotification,
+  ResourceUpdatedNotificationSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import { createMcpLogger, createMcpServer } from "@mcp-starter/core";
@@ -114,6 +116,43 @@ describe("MCP core", () => {
     );
     expect(result.content).toEqual([{ type: "text", text: "done" }]);
     expect(progress).toEqual([1]);
+    await client.close();
+  });
+
+  it("supports opt-in resource subscriptions", async () => {
+    const uri = "docs://getting-started";
+    const toolkit = createMcpServer({
+      name: "subscription-server",
+      version: "1.0.0",
+    });
+    toolkit.resource(
+      "docs",
+      uri,
+      { description: "Docs", subscribable: true },
+      async () => ({ contents: [{ uri, text: "hello" }] }),
+    );
+    const [clientTransport, serverTransport] =
+      InMemoryTransport.createLinkedPair();
+    const client = new Client({ name: "subscriber", version: "1.0.0" });
+    await Promise.all([
+      client.connect(clientTransport),
+      toolkit.mcp.connect(serverTransport),
+    ]);
+    const notifications: ResourceUpdatedNotification[] = [];
+    client.setNotificationHandler(
+      ResourceUpdatedNotificationSchema,
+      (notification) => {
+        notifications.push(notification);
+      },
+    );
+    await client.subscribeResource({ uri });
+    toolkit.notifyResourceChanged(uri);
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(notifications).toHaveLength(1);
+    await client.unsubscribeResource({ uri });
+    toolkit.notifyResourceChanged(uri);
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(notifications).toHaveLength(1);
     await client.close();
   });
 

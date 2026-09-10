@@ -11,6 +11,10 @@ import type {
   ToolAnnotations,
   LoggingLevel,
 } from "@modelcontextprotocol/sdk/types.js";
+import {
+  SubscribeRequestSchema,
+  UnsubscribeRequestSchema,
+} from "@modelcontextprotocol/sdk/types.js";
 import type { RequestHandlerExtra } from "@modelcontextprotocol/sdk/shared/protocol.js";
 import { z, type ZodRawShape } from "zod";
 
@@ -23,6 +27,12 @@ export interface ToolDefinition<Args extends ZodRawShape> {
   description?: string;
   inputSchema?: Args;
   annotations?: ToolAnnotations;
+}
+
+export interface ResourceOptions {
+  description?: string;
+  mimeType?: string;
+  subscribable?: boolean;
 }
 
 type ToolHandler<Args extends ZodRawShape> = (
@@ -40,11 +50,13 @@ export class Toolkit {
   readonly resourceNames = new Set<string>();
   readonly promptNames = new Set<string>();
   readonly loggers: Record<LoggingLevel, (data: unknown) => void>;
+  private readonly subscribableResources = new Set<string>();
+  private readonly subscriptions = new Map<string, Set<string>>();
 
   constructor(options: McpServerOptions) {
     this.mcp = new McpServer(
       { name: options.name, version: options.version },
-      { capabilities: { logging: {} } },
+      { capabilities: { logging: {}, resources: { subscribe: true } } },
     );
     this.loggers = {
       debug: (data) => {
@@ -72,6 +84,7 @@ export class Toolkit {
         this.log("emergency", data);
       },
     };
+    this.registerSubscriptionHandlers();
   }
 
   tool<Args extends ZodRawShape>(
@@ -96,10 +109,11 @@ export class Toolkit {
   resource(
     name: string,
     uri: string,
-    metadata: { description?: string; mimeType?: string },
+    metadata: ResourceOptions,
     read: () => Promise<ReadResourceResult> | ReadResourceResult,
   ): void {
     this.resourceNames.add(name);
+    if (metadata.subscribable) this.subscribableResources.add(uri);
     this.mcp.registerResource(name, uri, metadata, read);
   }
 
@@ -131,6 +145,36 @@ export class Toolkit {
       name,
       { description, argsSchema },
       handler as never,
+    );
+  }
+
+  notifyResourceChanged(uri: string): void {
+    if (!this.subscribableResources.has(uri)) return;
+    if (this.subscriptions.get(uri)?.size === 0) return;
+    void this.mcp.server.sendResourceUpdated({ uri }).catch(() => undefined);
+  }
+
+  private registerSubscriptionHandlers(): void {
+    this.mcp.server.setRequestHandler(
+      SubscribeRequestSchema,
+      ({ params }, extra) => {
+        if (!this.subscribableResources.has(params.uri)) {
+          throw new Error(`Resource is not subscribable: ${params.uri}`);
+        }
+        const sessionId = extra.sessionId ?? "default";
+        const sessions = this.subscriptions.get(params.uri) ?? new Set<string>();
+        sessions.add(sessionId);
+        this.subscriptions.set(params.uri, sessions);
+        return {};
+      },
+    );
+    this.mcp.server.setRequestHandler(
+      UnsubscribeRequestSchema,
+      ({ params }, extra) => {
+        const sessionId = extra.sessionId ?? "default";
+        this.subscriptions.get(params.uri)?.delete(sessionId);
+        return {};
+      },
     );
   }
 
