@@ -10,9 +10,6 @@
   "exports": {
     ".": "./dist/index.js"
   },
-  "bin": {
-    "mcp-server": "./dist/bin.js"
-  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "dev": "tsx src/bin.ts",
