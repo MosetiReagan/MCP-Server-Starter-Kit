@@ -10,7 +10,7 @@ const identifier = /^[A-Za-z_][A-Za-z0-9_]*$/;
 export function assertIdentifier(value: string): string {
   if (!identifier.test(value))
     throw new Error(`Unsafe SQL identifier: ${value}`);
-  return `"${value}"`;
+  return value;
 }
 
 export function assertTable(table: TableConfig): void {

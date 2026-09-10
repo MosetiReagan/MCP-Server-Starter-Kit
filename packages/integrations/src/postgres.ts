@@ -20,8 +20,10 @@ export function registerPostgresTools(
   for (const table of options.tables) {
     assertTable(table);
     const qualified = table.name;
-    const columns = table.columns.map(assertIdentifier).join(", ");
-    const primary = assertIdentifier(table.primaryKey);
+    const columns = table.columns
+      .map((column) => `"${assertIdentifier(column)}"`)
+      .join(", ");
+    const primary = `"${assertIdentifier(table.primaryKey)}"`;
 
     toolkit.tool(
       `list_${table.name}`,
@@ -50,7 +52,9 @@ export function registerPostgresTools(
     );
 
     if (table.searchColumns?.length) {
-      const searchColumns = table.searchColumns.map(assertIdentifier);
+      const searchColumns = table.searchColumns.map(
+        (column) => `"${assertIdentifier(column)}"`,
+      );
       const where = searchColumns
         .map((column, index) => `${column}::text ILIKE $${String(index + 1)}`)
         .join(" OR ");

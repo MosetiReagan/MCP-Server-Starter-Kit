@@ -1,7 +1,12 @@
 import mysql from "mysql2/promise";
 import { z } from "zod";
 import type { Toolkit } from "@mcp-starter/core";
-import { assertTable, jsonResult, type TableConfig } from "./sql.js";
+import {
+  assertIdentifier,
+  assertTable,
+  jsonResult,
+  type TableConfig,
+} from "./sql.js";
 
 export interface MysqlOptions {
   pool: mysql.Pool;
@@ -14,8 +19,10 @@ export function registerMysqlTools(
 ): void {
   for (const table of options.tables) {
     assertTable(table);
-    const columns = table.columns.map((column) => `\`${column}\``).join(", ");
-    const primary = `\`${table.primaryKey}\``;
+    const columns = table.columns
+      .map((column) => `\`${assertIdentifier(column)}\``)
+      .join(", ");
+    const primary = `\`${assertIdentifier(table.primaryKey)}\``;
     toolkit.tool(
       `list_${table.name}`,
       { description: `List rows from ${table.name}` },
